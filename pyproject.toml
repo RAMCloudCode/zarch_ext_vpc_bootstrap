@@ -1,0 +1,9 @@
+[project]
+name = "zarch_ext_vpc_bootstrap"
+version = "0.1.0"
+description = "Z-Arch extension: vpc-bootstrap"
+requires-python = ">=3.11"
+dependencies = ["zarch"]
+
+[project.entry-points."zarch.extensions"]
+vpc-bootstrap = "zarch_ext_vpc_bootstrap:Extension"
