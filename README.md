@@ -15,7 +15,7 @@ Service Access) with secure defaults.
 - Runs idempotently (safe to rerun).
 
 ## Hook
-- `post_project_bootstrap`
+- `async post_project_bootstrap`
 
 ## Secure Defaults
 - `create_network_if_missing: false`

@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from zarch_ext_vpc_bootstrap.extension import Extension
@@ -11,7 +13,7 @@ class DummyContext:
     def log(self, _message: str, level: str | None = None):
         _ = level
 
-    def gcloud(self, _args: list[str]) -> tuple[str, int]:
+    async def gcloud(self, _args: list[str]) -> tuple[str, int]:
         return "", 0
 
 
@@ -40,11 +42,11 @@ def test_ensure_network_fails_when_missing_and_create_disabled():
     ext = Extension()
 
     class MissingNetworkContext(DummyContext):
-        def gcloud(self, _args: list[str]) -> tuple[str, int]:
+        async def gcloud(self, _args: list[str]) -> tuple[str, int]:
             return "ERROR: not found", 1
 
     with pytest.raises(RuntimeError, match="create_network_if_missing=false"):
-        ext._ensure_network(
+        asyncio.run(ext._ensure_network(
             MissingNetworkContext(),
             {
                 "network_name": "default",
@@ -52,28 +54,28 @@ def test_ensure_network_fails_when_missing_and_create_disabled():
                 "network_subnet_mode": "CUSTOM",
                 "network_routing_mode": "REGIONAL",
             },
-        )
+        ))
 
 
 def test_ensure_service_networking_connection_connects_when_missing():
     ext = Extension()
     calls = []
 
-    def fake_run_gcloud(_project_context, args, _action):
+    async def fake_run_gcloud(_project_context, args, _action):
         calls.append(args)
         if args[:3] == ["services", "vpc-peerings", "list"]:
             return "[]"
         return "{}"
 
     ext._run_gcloud = fake_run_gcloud
-    ext._ensure_service_networking_connection(
+    asyncio.run(ext._ensure_service_networking_connection(
         DummyContext(),
         {
             "network_name": "default",
             "service_networking_service": "servicenetworking.googleapis.com",
             "reserved_range_name": "google-managed-services-default",
         },
-    )
+    ))
 
     connect_call = next(
         args for args in calls if args[:3] == ["services", "vpc-peerings", "connect"]
@@ -86,21 +88,21 @@ def test_ensure_service_networking_connection_updates_ranges_when_needed():
     ext = Extension()
     calls = []
 
-    def fake_run_gcloud(_project_context, args, _action):
+    async def fake_run_gcloud(_project_context, args, _action):
         calls.append(args)
         if args[:3] == ["services", "vpc-peerings", "list"]:
             return '[{"service":"servicenetworking.googleapis.com","reservedPeeringRanges":["existing-range"]}]'
         return "{}"
 
     ext._run_gcloud = fake_run_gcloud
-    ext._ensure_service_networking_connection(
+    asyncio.run(ext._ensure_service_networking_connection(
         DummyContext(),
         {
             "network_name": "default",
             "service_networking_service": "servicenetworking.googleapis.com",
             "reserved_range_name": "google-managed-services-default",
         },
-    )
+    ))
 
     update_call = next(
         args for args in calls if args[:3] == ["services", "vpc-peerings", "update"]

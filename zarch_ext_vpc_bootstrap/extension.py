@@ -44,7 +44,7 @@ class Extension(ZArchExtension):
     def claim(self, extension_name: str, extension_block: Dict[str, Any]) -> bool:
         return extension_block.get("type") == "vpc-bootstrap"
 
-    def post_project_bootstrap(
+    async def post_project_bootstrap(
         self,
         project_context,
         extension_configuration: Dict[str, Any],
@@ -53,19 +53,19 @@ class Extension(ZArchExtension):
         network_name = str(settings["network_name"])
 
         project_context.log("vpc-bootstrap: enabling required APIs.")
-        self._enable_apis(project_context, settings)
+        await self._enable_apis(project_context, settings)
 
         project_context.log(
             f"vpc-bootstrap: ensuring VPC network '{network_name}' exists."
         )
-        self._ensure_network(project_context, settings)
+        await self._ensure_network(project_context, settings)
 
         if settings["create_subnet_if_missing"]:
             project_context.log(
                 "vpc-bootstrap: ensuring subnet "
                 f"'{settings['subnet_name']}' in region '{settings['subnet_region']}'."
             )
-            self._ensure_subnet(project_context, settings)
+            await self._ensure_subnet(project_context, settings)
 
         if not settings["ensure_private_service_access"]:
             project_context.log(
@@ -79,13 +79,13 @@ class Extension(ZArchExtension):
             "vpc-bootstrap: ensuring reserved Service Networking range "
             f"'{settings['reserved_range_name']}'."
         )
-        self._ensure_reserved_range(project_context, settings)
+        await self._ensure_reserved_range(project_context, settings)
 
         project_context.log(
             "vpc-bootstrap: ensuring Service Networking connection on "
             f"network '{network_name}'."
         )
-        self._ensure_service_networking_connection(project_context, settings)
+        await self._ensure_service_networking_connection(project_context, settings)
 
         project_context.log("vpc-bootstrap: private service networking bootstrap complete.")
 
@@ -216,7 +216,7 @@ class Extension(ZArchExtension):
 
         return merged
 
-    def _enable_apis(self, project_context, settings: Mapping[str, Any]) -> None:
+    async def _enable_apis(self, project_context, settings: Mapping[str, Any]) -> None:
         apis: list[str] = []
         if settings["enable_compute_api"]:
             apis.append("compute.googleapis.com")
@@ -225,20 +225,20 @@ class Extension(ZArchExtension):
         if not apis:
             return
 
-        self._run_gcloud(
+        await self._run_gcloud(
             project_context,
             ["services", "enable", *apis, "--quiet"],
             f"enable required APIs ({', '.join(apis)})",
         )
         for api in apis:
-            self._wait_for_enabled_service(
+            await self._wait_for_enabled_service(
                 project_context=project_context,
                 service_name=api,
                 timeout_seconds=int(settings["api_enable_wait_seconds"]),
                 poll_interval_seconds=int(settings["api_enable_poll_interval_seconds"]),
             )
 
-    def _wait_for_enabled_service(
+    async def _wait_for_enabled_service(
         self,
         *,
         project_context,
@@ -249,7 +249,7 @@ class Extension(ZArchExtension):
         deadline = time.monotonic() + timeout_seconds
         last_output = ""
         while True:
-            enabled, output = self._is_service_enabled(
+            enabled, output = await self._is_service_enabled(
                 project_context=project_context,
                 service_name=service_name,
             )
@@ -269,13 +269,13 @@ class Extension(ZArchExtension):
             )
             time.sleep(poll_interval_seconds)
 
-    def _is_service_enabled(
+    async def _is_service_enabled(
         self,
         *,
         project_context,
         service_name: str,
     ) -> tuple[bool, str]:
-        output, code = self._gcloud_with_project(
+        output, code = await self._gcloud_with_project(
             project_context,
             [
                 "services",
@@ -288,13 +288,13 @@ class Extension(ZArchExtension):
         enabled_service = output.strip()
         return code == 0 and enabled_service == service_name, output
 
-    def _ensure_network(
+    async def _ensure_network(
         self,
         project_context,
         settings: Mapping[str, Any],
     ) -> Dict[str, Any]:
         network_name = str(settings["network_name"])
-        describe_output, describe_code = self._gcloud_with_project(
+        describe_output, describe_code = await self._gcloud_with_project(
             project_context,
             [
                 "compute",
@@ -320,7 +320,7 @@ class Extension(ZArchExtension):
                 "create_network_if_missing=false."
             )
 
-        self._run_gcloud(
+        await self._run_gcloud(
             project_context,
             [
                 "compute",
@@ -333,7 +333,7 @@ class Extension(ZArchExtension):
             ],
             f"create VPC network '{network_name}'",
         )
-        describe_after = self._run_gcloud(
+        describe_after = await self._run_gcloud(
             project_context,
             [
                 "compute",
@@ -379,7 +379,7 @@ class Extension(ZArchExtension):
                 + "; ".join(mismatches)
             )
 
-    def _ensure_subnet(
+    async def _ensure_subnet(
         self,
         project_context,
         settings: Mapping[str, Any],
@@ -389,7 +389,7 @@ class Extension(ZArchExtension):
         subnet_cidr = str(settings["subnet_cidr"])
         network_name = str(settings["network_name"])
 
-        describe_output, describe_code = self._gcloud_with_project(
+        describe_output, describe_code = await self._gcloud_with_project(
             project_context,
             [
                 "compute",
@@ -411,7 +411,7 @@ class Extension(ZArchExtension):
                 f"Failed to describe subnet '{subnet_name}': {describe_output}"
             )
 
-        self._run_gcloud(
+        await self._run_gcloud(
             project_context,
             [
                 "compute",
@@ -427,7 +427,7 @@ class Extension(ZArchExtension):
             f"create subnet '{subnet_name}'",
         )
 
-        describe_after = self._run_gcloud(
+        describe_after = await self._run_gcloud(
             project_context,
             [
                 "compute",
@@ -482,7 +482,7 @@ class Extension(ZArchExtension):
                 + "; ".join(mismatches)
             )
 
-    def _ensure_reserved_range(
+    async def _ensure_reserved_range(
         self,
         project_context,
         settings: Mapping[str, Any],
@@ -491,7 +491,7 @@ class Extension(ZArchExtension):
         network_name = str(settings["network_name"])
         prefix_length = int(settings["reserved_range_prefix_length"])
 
-        describe_output, describe_code = self._gcloud_with_project(
+        describe_output, describe_code = await self._gcloud_with_project(
             project_context,
             [
                 "compute",
@@ -514,7 +514,7 @@ class Extension(ZArchExtension):
                 f"Failed to describe reserved range '{range_name}': {describe_output}"
             )
 
-        self._run_gcloud(
+        await self._run_gcloud(
             project_context,
             [
                 "compute",
@@ -530,7 +530,7 @@ class Extension(ZArchExtension):
             f"create reserved Service Networking range '{range_name}'",
         )
 
-        describe_after = self._run_gcloud(
+        describe_after = await self._run_gcloud(
             project_context,
             [
                 "compute",
@@ -587,7 +587,7 @@ class Extension(ZArchExtension):
                 + "; ".join(mismatches)
             )
 
-    def _ensure_service_networking_connection(
+    async def _ensure_service_networking_connection(
         self,
         project_context,
         settings: Mapping[str, Any],
@@ -596,7 +596,7 @@ class Extension(ZArchExtension):
         service_name = str(settings["service_networking_service"])
         reserved_range_name = str(settings["reserved_range_name"])
 
-        output = self._run_gcloud(
+        output = await self._run_gcloud(
             project_context,
             [
                 "services",
@@ -612,7 +612,7 @@ class Extension(ZArchExtension):
         connection = self._pick_connection(connections, service_name)
 
         if connection is None:
-            self._run_gcloud(
+            await self._run_gcloud(
                 project_context,
                 [
                     "services",
@@ -632,7 +632,7 @@ class Extension(ZArchExtension):
             return
 
         updated_ranges = ",".join(self._dedupe_preserve_order(existing_ranges + [reserved_range_name]))
-        self._run_gcloud(
+        await self._run_gcloud(
             project_context,
             [
                 "services",
@@ -672,17 +672,17 @@ class Extension(ZArchExtension):
                 names.append(trimmed)
         return names
 
-    def _run_gcloud(self, project_context, args: list[str], action: str) -> str:
-        output, code = self._gcloud_with_project(project_context, args)
+    async def _run_gcloud(self, project_context, args: list[str], action: str) -> str:
+        output, code = await self._gcloud_with_project(project_context, args)
         if code != 0:
             raise RuntimeError(f"Failed to {action}: {output}")
         return output
 
-    def _gcloud_with_project(self, project_context, args: list[str]) -> tuple[str, int]:
+    async def _gcloud_with_project(self, project_context, args: list[str]) -> tuple[str, int]:
         full_args = list(args)
         if not any(arg == "--project" or arg.startswith("--project=") for arg in full_args):
             full_args.extend(["--project", project_context.id])
-        return project_context.gcloud(full_args)
+        return await project_context.gcloud(full_args)
 
     def _parse_json_object(self, output: str, source: str) -> Dict[str, Any]:
         parsed = self._parse_json(output, source)
