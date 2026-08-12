@@ -29,7 +29,7 @@ it will enforce private service networking by default.
 ```yaml
 extensions:
   vpc-bootstrap:
-    type: "vpc-bootstrap"
+    extension: "vpc-bootstrap"
     required_roles:
       - "roles/compute.networkAdmin"
       - "roles/servicenetworking.networksAdmin"
